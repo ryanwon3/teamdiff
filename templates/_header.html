@@ -1,0 +1,9 @@
+<header class="site-header">
+  <nav class="site-nav" aria-label="Main">
+    <a href="/"{% if nav_current == "gold" %} aria-current="page"{% endif %}>Gold lanes</a>
+    <a href="/matchup"{% if nav_current == "matchup" %} aria-current="page"{% endif %}>Matchup</a>
+    <a href="/database"{% if nav_current == "database" %} aria-current="page"{% endif %}>Database</a>
+  </nav>
+  <h1>{{ header_title }}</h1>
+  <p class="tagline">{{ header_tagline }}</p>
+</header>

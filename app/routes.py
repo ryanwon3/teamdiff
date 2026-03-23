@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
+from typing import Any
 
 import requests
 from flask import Blueprint, current_app, jsonify, render_template, request
@@ -10,17 +12,31 @@ from app.db.store import (
     fetch_db_summary,
     fetch_gold_curve,
     fetch_gold_leaders_at_15,
+    fetch_match_detail,
     fetch_matches_page,
 )
 from app.riot.client import RiotAPIError, RiotClient
 from app.services import datadragon as dd
 from app.services.matchup import compute_matchup_stats_hybrid
 from app.services.seed_puuids import resolve_matchup_seed_puuids
+from app.timefmt import utc_sqlite_to_eastern_display
 
 bp = Blueprint("main", __name__)
 
-_DB_MATCHES_MAX_LIMIT = 100
+_DB_MATCHES_MAX_LIMIT = 500
 _DB_MATCHES_DEFAULT_LIMIT = 25
+_SAFE_MATCH_ID = re.compile(r"^[A-Za-z0-9_.-]{4,80}$")
+
+
+def _format_db_summary_eastern(summary: dict[str, Any]) -> None:
+    for key in ("ingested_at_min", "ingested_at_max"):
+        if key in summary:
+            summary[key] = utc_sqlite_to_eastern_display(summary.get(key))
+
+
+def _format_match_rows_eastern(rows: list[dict[str, Any]]) -> None:
+    for row in rows:
+        row["ingested_at"] = utc_sqlite_to_eastern_display(row.get("ingested_at"))
 
 
 def _resolve_champion_query(param: str) -> tuple[int | None, str]:
@@ -72,6 +88,7 @@ def api_db_summary():
     if summary is None:
         return jsonify({"error": "Could not read database summary"}), 500
     summary["db_path_configured"] = True
+    _format_db_summary_eastern(summary)
     resp = jsonify(summary)
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -98,7 +115,55 @@ def api_db_matches():
         return jsonify({"error": "Database file not configured or missing"}), 404
     except (OSError, sqlite3.Error) as e:
         return jsonify({"error": "Could not read matches", "detail": str(e)}), 500
+    _format_match_rows_eastern(rows)
     resp = jsonify({"limit": limit, "offset": offset, "matches": rows})
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@bp.get("/api/db/matches/<match_id>")
+def api_db_match_detail(match_id: str):
+    if not _SAFE_MATCH_ID.match(match_id):
+        return jsonify({"error": "Invalid match id"}), 400
+    db_path = (current_app.config.get("MATCHUP_DB_PATH") or "").strip()
+    if not db_path or not os.path.isfile(db_path):
+        return jsonify({"error": "Database file not configured or missing"}), 404
+    try:
+        detail = fetch_match_detail(db_path, match_id)
+    except FileNotFoundError:
+        return jsonify({"error": "Database file not configured or missing"}), 404
+    except (OSError, sqlite3.Error) as e:
+        return jsonify({"error": "Could not read match", "detail": str(e)}), 500
+    if detail is None:
+        return jsonify({"error": "Match not found"}), 404
+
+    enriched: list[dict[str, Any]] = []
+    for p in detail["participants"]:
+        row = {k: v for k, v in p.items() if k != "puuid"}
+        pu = p.get("puuid")
+        if pu and isinstance(pu, str) and len(pu) > 10:
+            row["puuid_masked"] = f"{pu[:4]}…{pu[-4:]}"
+        else:
+            row["puuid_masked"] = None
+        try:
+            meta = dd.champion_display(int(p["champion_id"]))
+        except (requests.RequestException, ValueError, OSError, TypeError):
+            meta = None
+        if meta:
+            row["champion_name"] = meta["name"]
+            row["champion_icon_url"] = meta["icon_url"]
+        enriched.append(row)
+
+    match_row = dict(detail["match"])
+    match_row["ingested_at"] = utc_sqlite_to_eastern_display(
+        match_row.get("ingested_at")
+    )
+    out = {
+        "match": match_row,
+        "participants": enriched,
+        "timeline_row_count": detail.get("timeline_row_count", 0),
+    }
+    resp = jsonify(out)
     resp.headers["Cache-Control"] = "no-store"
     return resp
 

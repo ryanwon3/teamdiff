@@ -774,6 +774,44 @@ def fetch_db_summary(path: str) -> dict[str, Any] | None:
             mm = conn.execute(
                 "SELECT MIN(ingested_at), MAX(ingested_at) FROM matches"
             ).fetchone()
+
+            has_tl = _participant_timeline_exists(conn)
+            if has_tl:
+                timeline_row_count = int(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM participant_timeline"
+                    ).fetchone()[0]
+                )
+                matches_with_timeline = int(
+                    conn.execute(
+                        "SELECT COUNT(DISTINCT match_id) FROM participant_timeline"
+                    ).fetchone()[0]
+                )
+            else:
+                timeline_row_count = 0
+                matches_with_timeline = 0
+
+            pcols = _table_columns(conn, "participants")
+            if "participant_id" in pcols:
+                participants_with_riot_id = int(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM participants WHERE participant_id IS NOT NULL"
+                    ).fetchone()[0]
+                )
+            else:
+                participants_with_riot_id = 0
+            if "team_position" in pcols:
+                participants_with_lane = int(
+                    conn.execute(
+                        """
+                        SELECT COUNT(*) FROM participants
+                        WHERE team_position IS NOT NULL
+                          AND TRIM(team_position) != ''
+                        """
+                    ).fetchone()[0]
+                )
+            else:
+                participants_with_lane = 0
     except sqlite3.Error:
         return None
 
@@ -794,6 +832,12 @@ def fetch_db_summary(path: str) -> dict[str, Any] | None:
     except OSError:
         file_size_bytes = None
 
+    gold_features_ready = (
+        timeline_row_count > 0
+        and participants_with_lane > 0
+        and participants_with_riot_id > 0
+    )
+
     return {
         "matches_count": matches_count,
         "participants_count": participants_count,
@@ -801,6 +845,11 @@ def fetch_db_summary(path: str) -> dict[str, Any] | None:
         "ingested_at_min": ingested_min,
         "ingested_at_max": ingested_max,
         "file_size_bytes": file_size_bytes,
+        "timeline_row_count": timeline_row_count,
+        "matches_with_timeline": matches_with_timeline,
+        "participants_with_riot_id": participants_with_riot_id,
+        "participants_with_lane": participants_with_lane,
+        "gold_features_ready": gold_features_ready,
     }
 
 
@@ -811,21 +860,67 @@ def fetch_matches_page(path: str, *, limit: int, offset: int) -> list[dict[str, 
     if not p.is_file():
         raise FileNotFoundError(path)
     with _connect_readonly(str(p)) as conn:
-        rows = conn.execute(
-            """
-            SELECT
-                m.match_id,
-                m.queue_id,
-                m.game_version,
-                m.ingested_at,
-                (SELECT COUNT(*) FROM participants p WHERE p.match_id = m.match_id)
-                    AS participant_count
-            FROM matches m
-            ORDER BY m.ingested_at DESC
-            LIMIT ? OFFSET ?
-            """,
-            (limit, offset),
-        ).fetchall()
+        has_tl = _participant_timeline_exists(conn)
+        pcols = _table_columns(conn, "participants")
+        has_pid = "participant_id" in pcols
+        has_lane = "team_position" in pcols
+
+        if has_tl and has_pid and has_lane:
+            rows = conn.execute(
+                """
+                SELECT
+                    m.match_id,
+                    m.queue_id,
+                    m.game_version,
+                    m.ingested_at,
+                    (SELECT COUNT(*) FROM participants p WHERE p.match_id = m.match_id),
+                    (SELECT COUNT(*) FROM participant_timeline t WHERE t.match_id = m.match_id),
+                    (SELECT COUNT(*) FROM participants p WHERE p.match_id = m.match_id
+                        AND p.participant_id IS NOT NULL),
+                    (SELECT COUNT(*) FROM participants p WHERE p.match_id = m.match_id
+                        AND p.team_position IS NOT NULL AND TRIM(p.team_position) != '')
+                FROM matches m
+                ORDER BY m.ingested_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                (limit, offset),
+            ).fetchall()
+        elif has_pid and has_lane:
+            rows = conn.execute(
+                """
+                SELECT
+                    m.match_id,
+                    m.queue_id,
+                    m.game_version,
+                    m.ingested_at,
+                    (SELECT COUNT(*) FROM participants p WHERE p.match_id = m.match_id),
+                    0,
+                    (SELECT COUNT(*) FROM participants p WHERE p.match_id = m.match_id
+                        AND p.participant_id IS NOT NULL),
+                    (SELECT COUNT(*) FROM participants p WHERE p.match_id = m.match_id
+                        AND p.team_position IS NOT NULL AND TRIM(p.team_position) != '')
+                FROM matches m
+                ORDER BY m.ingested_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                (limit, offset),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT
+                    m.match_id,
+                    m.queue_id,
+                    m.game_version,
+                    m.ingested_at,
+                    (SELECT COUNT(*) FROM participants p WHERE p.match_id = m.match_id),
+                    0, 0, 0
+                FROM matches m
+                ORDER BY m.ingested_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                (limit, offset),
+            ).fetchall()
     out: list[dict[str, Any]] = []
     for r in rows:
         try:
@@ -839,6 +934,87 @@ def fetch_matches_page(path: str, *, limit: int, offset: int) -> list[dict[str, 
                 "game_version": r[2],
                 "ingested_at": r[3],
                 "participant_count": int(r[4] or 0),
+                "timeline_row_count": int(r[5] or 0),
+                "participants_with_riot_id": int(r[6] or 0),
+                "participants_with_lane": int(r[7] or 0),
             }
         )
     return out
+
+
+def fetch_match_detail(path: str, match_id: str) -> dict[str, Any] | None:
+    """
+    One match row plus all participant rows (for database inspect UI).
+    """
+    mid = (match_id or "").strip()
+    if not mid:
+        return None
+    p = Path(path)
+    if not p.is_file():
+        return None
+    with _connect_readonly(str(p)) as conn:
+        mrow = conn.execute(
+            """
+            SELECT match_id, queue_id, game_version, ingested_at
+            FROM matches WHERE match_id = ?
+            """,
+            (mid,),
+        ).fetchone()
+        if not mrow:
+            return None
+        pcols = _table_columns(conn, "participants")
+        if "participant_id" in pcols and "team_position" in pcols:
+            prows = conn.execute(
+                """
+                SELECT id, champion_id, team_id, win, puuid, participant_id, team_position
+                FROM participants
+                WHERE match_id = ?
+                ORDER BY team_id, id
+                """,
+                (mid,),
+            ).fetchall()
+        else:
+            prows = conn.execute(
+                """
+                SELECT id, champion_id, team_id, win, puuid
+                FROM participants
+                WHERE match_id = ?
+                ORDER BY team_id, id
+                """,
+                (mid,),
+            ).fetchall()
+        tl_n = 0
+        if _participant_timeline_exists(conn):
+            r = conn.execute(
+                "SELECT COUNT(*) FROM participant_timeline WHERE match_id = ?",
+                (mid,),
+            ).fetchone()
+            tl_n = int(r[0] or 0) if r else 0
+
+    parts: list[dict[str, Any]] = []
+    for pr in prows:
+        entry: dict[str, Any] = {
+            "row_id": int(pr[0]) if pr[0] is not None else None,
+            "champion_id": int(pr[1]),
+            "team_id": int(pr[2]),
+            "win": int(pr[3] or 0),
+            "puuid": pr[4] if isinstance(pr[4], str) else None,
+        }
+        if len(pr) > 5:
+            entry["participant_id"] = int(pr[5]) if pr[5] is not None else None
+            entry["team_position"] = pr[6] if pr[6] is not None else None
+        else:
+            entry["participant_id"] = None
+            entry["team_position"] = None
+        parts.append(entry)
+
+    return {
+        "match": {
+            "match_id": mrow[0],
+            "queue_id": int(mrow[1]),
+            "game_version": mrow[2],
+            "ingested_at": mrow[3],
+        },
+        "participants": parts,
+        "timeline_row_count": tl_n,
+    }

@@ -14,23 +14,44 @@
         <a href="/database" aria-current="page">Database</a>
       </nav>
       <h1>Database</h1>
-      <p class="tagline">Read-only summary of ingested matches in SQLite</p>
+      <p class="tagline">
+        Summary of stored matches, timelines, and lane metadata — click a match for full participant rows
+      </p>
     </header>
 
-    <main class="container container-wide">
+    <main class="container container-wide page-main">
       <section id="db-status" class="status" hidden></section>
       <section id="db-summary" class="stat-grid" hidden></section>
+
       <section id="db-table-wrap" class="card table-card" hidden>
-        <h2 class="section-title">Matches</h2>
+        <div class="db-table-toolbar">
+          <h2 class="section-title db-table-title">Matches</h2>
+          <label class="db-page-size">
+            <span class="db-page-size-label">Rows per load</span>
+            <select id="db-page-size" aria-label="Rows per page">
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+              <option value="500">500</option>
+            </select>
+          </label>
+        </div>
+        <p class="subtle db-table-hint">
+          Newest first. Use <strong>Load more</strong> to page through everything in the file (up to 500 rows per request).
+        </p>
         <div class="table-scroll">
-          <table class="data-table" id="db-matches-table">
+          <table class="data-table db-matches-table" id="db-matches-table">
             <thead>
               <tr>
                 <th>Match ID</th>
                 <th>Queue</th>
                 <th>Version</th>
-                <th>Ingested</th>
-                <th>Participants</th>
+                <th>Ingested (US Eastern)</th>
+                <th>Players</th>
+                <th>Riot ID</th>
+                <th>Lane</th>
+                <th>Timeline Δ</th>
               </tr>
             </thead>
             <tbody id="db-matches-body"></tbody>
@@ -38,6 +59,30 @@
         </div>
         <div class="table-actions">
           <button type="button" id="db-load-more" class="btn-secondary">Load more</button>
+        </div>
+      </section>
+
+      <section id="db-detail" class="card db-detail-card" hidden>
+        <div class="db-detail-header">
+          <h2 class="section-title">Match detail</h2>
+          <button type="button" id="db-detail-close" class="btn-secondary btn-ghost">Close</button>
+        </div>
+        <p id="db-detail-meta" class="subtle"></p>
+        <div class="table-scroll">
+          <table class="data-table db-detail-table">
+            <thead>
+              <tr>
+                <th>Champion</th>
+                <th>ID</th>
+                <th>Team</th>
+                <th>Win</th>
+                <th>Lane</th>
+                <th>Riot part.</th>
+                <th>PUUID</th>
+              </tr>
+            </thead>
+            <tbody id="db-detail-body"></tbody>
+          </table>
         </div>
       </section>
     </main>

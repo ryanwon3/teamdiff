@@ -11,19 +11,12 @@
     ></script>
   </head>
   <body>
-    <header class="site-header">
-      <nav class="site-nav" aria-label="Main">
-        <a href="/" aria-current="page">Gold lanes</a>
-        <a href="/matchup">Matchup</a>
-        <a href="/database">Database</a>
-      </nav>
-      <h1>teamdiff</h1>
-      <p class="tagline">
-        Same-lane opponents by average early gold difference — plus gold curves per matchup
-      </p>
-    </header>
+    {% set nav_current = "gold" %}
+    {% set header_title = "teamdiff" %}
+    {% set header_tagline = "Same-lane opponents by average early gold difference — plus gold curves per matchup" %}
+    {% include "_header.html" %}
 
-    <main class="container container-gold">
+    <main class="container container-gold page-main">
       <form id="gold-form" class="card">
         <datalist id="champion-options"></datalist>
         <div class="champion-field">
@@ -75,7 +68,7 @@
         <button type="submit">Load leaderboard</button>
       </form>
 
-      <p class="hint">
+      <p class="hint page-hint">
         Lane = Riot role (TOP / MIDDLE / BOTTOM / UTILITY / JUNGLE). Default sort is smallest
         average gold gap first. Needs timelines from <code>collect_matches.py</code> and optional
         <code>MATCHUP_QUEUE_ID</code> in <code>.env</code>.

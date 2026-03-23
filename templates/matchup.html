@@ -7,17 +7,12 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
   </head>
   <body>
-    <header class="site-header">
-      <nav class="site-nav" aria-label="Main">
-        <a href="/">Gold lanes</a>
-        <a href="/matchup" aria-current="page">Matchup</a>
-        <a href="/database">Database</a>
-      </nav>
-      <h1>teamdiff</h1>
-      <p class="tagline">Champion A win rate vs champion B from your DB (or live seeds)</p>
-    </header>
+    {% set nav_current = "matchup" %}
+    {% set header_title = "Matchup" %}
+    {% set header_tagline = "Champion A win rate vs champion B from your DB (or live seeds)" %}
+    {% include "_header.html" %}
 
-    <main class="container">
+    <main class="container container-gold page-main">
       <form id="matchup-form" class="card">
         <datalist id="champion-options"></datalist>
         <div class="champion-field">
@@ -53,7 +48,7 @@
         <button type="submit">Compute sample</button>
       </form>
 
-      <p class="hint">
+      <p class="hint page-hint">
         Uses <code>/api/matchup</code>. Seeds and API key stay in <code>.env</code>.
       </p>
 
