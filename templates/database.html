@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>teamdiff — database</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="site-nav" aria-label="Main">
+        <a href="/">Matchup</a>
+        <a href="/database" aria-current="page">Database</a>
+      </nav>
+      <h1>Database</h1>
+      <p class="tagline">Read-only summary of ingested matches in SQLite</p>
+    </header>
+
+    <main class="container container-wide">
+      <section id="db-status" class="status" hidden></section>
+      <section id="db-summary" class="stat-grid" hidden></section>
+      <section id="db-table-wrap" class="card table-card" hidden>
+        <h2 class="section-title">Matches</h2>
+        <div class="table-scroll">
+          <table class="data-table" id="db-matches-table">
+            <thead>
+              <tr>
+                <th>Match ID</th>
+                <th>Queue</th>
+                <th>Version</th>
+                <th>Ingested</th>
+                <th>Participants</th>
+              </tr>
+            </thead>
+            <tbody id="db-matches-body"></tbody>
+          </table>
+        </div>
+        <div class="table-actions">
+          <button type="button" id="db-load-more" class="btn-secondary">Load more</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/db.js') }}"></script>
+  </body>
+</html>

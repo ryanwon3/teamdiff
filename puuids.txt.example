@@ -1,0 +1,3 @@
+# Copy to puuids.txt (gitignored) and add one PUUID per line.
+# Used when MATCHUP_SEED_PUUIDS in .env is empty — avoids .env line-break mistakes.
+your_puuid_here
