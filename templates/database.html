@@ -9,27 +9,77 @@
   <body>
     <header class="site-header">
       <nav class="site-nav" aria-label="Main">
-        <a href="/">Matchup</a>
+        <a href="/">Gold lanes</a>
         <a href="/database" aria-current="page">Database</a>
       </nav>
       <h1>Database</h1>
-      <p class="tagline">Read-only summary of ingested matches in SQLite</p>
+      <p class="tagline">
+        Live ingestion health, timeline coverage for gold @15 and curves, and recent matches
+      </p>
     </header>
 
     <main class="container container-wide">
+      <div class="db-toolbar card">
+        <div class="db-toolbar-text">
+          <p class="db-live-line">
+            <span class="db-live-dot" aria-hidden="true"></span>
+            <strong>Live</strong> — summary auto-refreshes every 30s (when this tab is visible).
+            <span id="db-last-refresh" class="subtle"></span>
+          </p>
+          <p class="db-toolbar-sub subtle">
+            Newest row in the table is the most recent ingest. Timeline rows must exist for gold
+            leaderboards and curves on the home page.
+          </p>
+        </div>
+        <button type="button" id="db-refresh" class="btn-secondary">Refresh now</button>
+      </div>
+
       <section id="db-status" class="status" hidden></section>
       <section id="db-summary" class="stat-grid" hidden></section>
+
+      <section id="db-gold-info" class="card db-gold-info" hidden>
+        <h2 class="section-title">Gold features (how this DB is used)</h2>
+        <ul class="db-gold-list">
+          <li>
+            <strong>Lane pairing</strong> uses <code>team_position</code> and Riot
+            <code>participant_id</code> on each participant row.
+          </li>
+          <li>
+            <strong>Gold at ≤15 min</strong> reads <code>participant_timeline.total_gold</code> at the
+            latest stored minute ≤ 15 for each side (same rule as the API).
+          </li>
+          <li>
+            <strong>Curves</strong> average <code>total_gold</code> (and level for level mode) across
+            games where both laners have a frame at the same minute.
+          </li>
+        </ul>
+        <p class="subtle db-gold-foot">
+          Matches without timeline still count in the DB but cannot power gold stats until the
+          collector fetches timelines for new games. A match can show timeline rows while participant
+          rows still lack lane / Riot id (older ingests); run <code>backfill_participant_meta.py</code> or
+          keep <code>collect_matches.py</code> running so those fields get filled from match detail.
+        </p>
+      </section>
+
       <section id="db-table-wrap" class="card table-card" hidden>
-        <h2 class="section-title">Matches</h2>
+        <h2 class="section-title">Recent matches</h2>
+        <p class="subtle table-hint">
+          Sorted by ingest time (newest first). Ingest times show <strong>US Eastern</strong> (EST/EDT) from
+          UTC stored in the database. Click a row to expand champions and match details.
+          “Timeline” = gold/level samples stored.
+        </p>
         <div class="table-scroll">
           <table class="data-table" id="db-matches-table">
             <thead>
               <tr>
+                <th class="db-col-expand" aria-label="Expand"></th>
                 <th>Match ID</th>
                 <th>Queue</th>
                 <th>Version</th>
-                <th>Ingested</th>
+                <th>Ingested (ET)</th>
                 <th>Participants</th>
+                <th>Timeline rows</th>
+                <th>Gold data</th>
               </tr>
             </thead>
             <tbody id="db-matches-body"></tbody>

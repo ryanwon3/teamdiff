@@ -10,6 +10,7 @@ simple sleeps on errors and between rounds.
 from __future__ import annotations
 
 import os
+import random
 import time
 from pathlib import Path
 
@@ -23,7 +24,15 @@ if _env_file.is_file():
     load_dotenv(_env_file, override=True)
 
 from app.config import Config
-from app.db.store import init_schema, insert_match_if_new, match_exists
+from app.db.store import (
+    count_timeline_frames,
+    init_schema,
+    ingest_match_timeline,
+    insert_match_if_new,
+    match_exists,
+    match_needs_participant_meta_backfill,
+    merge_participant_meta_from_match,
+)
 from app.riot.client import RiotAPIError, RiotClient
 from app.services.seed_puuids import resolve_matchup_seed_puuids
 
@@ -74,6 +83,11 @@ def main() -> None:
     queue_id = Config.MATCHUP_QUEUE_ID
     list_count = max(1, Config.COLLECTOR_MATCHLIST_COUNT)
     sleep_s = max(1.0, float(Config.COLLECTOR_SLEEP_SECONDS))
+    # Light spacing between match-detail API calls (do not use full round sleep per id).
+    api_spacing_s = min(2.0, max(0.5, sleep_s / 15))
+    mid_prefix = Config.MATCHUP_MATCH_ID_PREFIX
+    refresh_s = float(Config.COLLECTOR_SEED_REFRESH_SECONDS)
+    last_seed_refresh = time.monotonic()
 
     # Match-V5 matchlist is paginated. Always using start=0 only ever sees the same newest
     # `list_count` games per seed; once they are all in the DB, nothing new appears until we
@@ -82,7 +96,19 @@ def main() -> None:
 
     print(f"Collector writing to {db_path}; Ctrl+C to stop.")
     while True:
-        for puuid in seeds:
+        now_m = time.monotonic()
+        if now_m - last_seed_refresh >= refresh_s:
+            seeds = resolve_matchup_seed_puuids(client, force_refresh=True)
+            last_seed_refresh = now_m
+            if not seeds:
+                print("Warning: no seed PUUIDs after ladder refresh; waiting…")
+                time.sleep(sleep_s)
+                continue
+
+        round_seeds = list(seeds)
+        random.shuffle(round_seeds)
+
+        for puuid in round_seeds:
             start = list_start_by_puuid.get(puuid, 0)
             try:
                 ids = client.match_ids_by_puuid(
@@ -98,7 +124,20 @@ def main() -> None:
 
             had_new = False
             for mid in ids:
+                if mid_prefix and not mid.startswith(mid_prefix):
+                    continue
                 if match_exists(db_path, mid):
+                    if match_needs_participant_meta_backfill(db_path, mid):
+                        try:
+                            refill = client.match_by_id(mid)
+                        except RiotAPIError as e:
+                            print(f"meta backfill {mid} error {e.status_code}")
+                            time.sleep(60 if e.status_code == 429 else sleep_s)
+                        else:
+                            n = merge_participant_meta_from_match(db_path, refill)
+                            if n:
+                                print(f"  participant lane/id backfill {mid} ({n} rows)")
+                            time.sleep(api_spacing_s)
                     continue
                 try:
                     match = client.match_by_id(mid)
@@ -107,9 +146,38 @@ def main() -> None:
                     time.sleep(60 if e.status_code == 429 else sleep_s)
                     break
 
-                if insert_match_if_new(db_path, match):
+                if insert_match_if_new(
+                    db_path, match, match_id_prefix=mid_prefix
+                ):
                     print(f"stored {mid}")
                     had_new = True
+                    timeline = None
+                    for attempt in range(3):
+                        try:
+                            timeline = client.match_timeline_by_id(mid)
+                            break
+                        except RiotAPIError as e:
+                            if e.status_code == 429 and attempt < 2:
+                                print(f"  timeline {mid} rate limited (429), waiting 60s…")
+                                time.sleep(60)
+                                continue
+                            print(
+                                f"  timeline {mid} error {e.status_code}: "
+                                f"{(e.message or '')[:160]}"
+                            )
+                            time.sleep(60 if e.status_code == 429 else sleep_s)
+                            break
+                    if timeline is not None:
+                        n = ingest_match_timeline(db_path, mid, timeline)
+                        if n:
+                            print(f"  timeline rows {n}")
+                        else:
+                            fc = count_timeline_frames(timeline)
+                            top_keys = sorted(timeline.keys()) if timeline else []
+                            print(
+                                f"  timeline warning: stored 0 rows for {mid} "
+                                f"(frame_count={fc}, top-level keys={top_keys})"
+                            )
 
             if had_new:
                 list_start_by_puuid[puuid] = 0

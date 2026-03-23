@@ -23,12 +23,24 @@ def _dedupe_puuids(ids: list[str]) -> list[str]:
     return out
 
 
-def resolve_matchup_seed_puuids(client: RiotClient | None) -> list[str]:
+def invalidate_ladder_seed_cache() -> None:
+    """Clear cached ladder merge (e.g. collector periodic refresh)."""
+    global _cache_at, _cached
+    _cache_at = None
+    _cached = None
+
+
+def resolve_matchup_seed_puuids(
+    client: RiotClient | None, *, force_refresh: bool = False
+) -> list[str]:
     """
     File/env seeds plus optional League ladder seeds (cached briefly to avoid
     refetching ladders on every HTTP request).
     """
     global _cache_at, _cached
+
+    if force_refresh:
+        invalidate_ladder_seed_cache()
 
     base = list(Config.MATCHUP_SEED_PUUIDS)
     if client is None or not Config.MATCHUP_LADDER_SEEDS:

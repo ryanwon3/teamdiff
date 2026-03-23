@@ -1,0 +1,26 @@
+---
+alwaysApply: true
+---
+
+---
+description: Rules for this Riot matchup Flask project
+globs:
+  - "**/*.py"
+  - "templates/**/*.html"
+  - "static/**/*.css"
+---
+
+Tech stack:
+- Python 3.11+
+- Flask
+- requests
+- python-dotenv
+- simple HTML/CSS/vanilla JS
+
+Rules:
+- never expose the Riot API key to frontend code
+- use environment variables for secrets
+- keep code simple and readable
+- separate Riot API logic from Flask routes
+- prefer small, minimal edits
+- after changes, explain how to run and test the app

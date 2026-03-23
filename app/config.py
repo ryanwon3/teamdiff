@@ -90,6 +90,44 @@ def _ladder_tier_list() -> list[str]:
     return tiers or ["CHALLENGER", "GRANDMASTER"]
 
 
+def _ladder_max_per_tier() -> int:
+    raw = (os.environ.get("MATCHUP_LADDER_MAX_PER_TIER") or "").strip()
+    if not raw:
+        return 0
+    try:
+        return int(raw)
+    except ValueError:
+        return 0
+
+
+def _master_max_pages() -> int:
+    raw = (os.environ.get("MATCHUP_LADDER_MASTER_MAX_PAGES") or "3").strip()
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 3
+
+
+def _master_cursor_path() -> Path:
+    raw = (os.environ.get("MATCHUP_LADDER_MASTER_CURSOR_PATH") or "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return _pkg_root / "data" / "ladder_master_page.cursor"
+
+
+def _match_id_prefix() -> str | None:
+    raw = (os.environ.get("MATCHUP_MATCH_ID_PREFIX") or "").strip()
+    return raw if raw else None
+
+
+def _collector_seed_refresh_seconds() -> float:
+    raw = (os.environ.get("COLLECTOR_SEED_REFRESH_SECONDS") or "3600").strip()
+    try:
+        return max(60.0, float(raw))
+    except ValueError:
+        return 3600.0
+
+
 class Config:
     RIOT_API_KEY = os.environ.get("RIOT_API_KEY", "")
     RIOT_REGIONAL_ROUTE = os.environ.get("RIOT_REGIONAL_ROUTE", "americas").strip()
@@ -102,9 +140,15 @@ class Config:
     MATCHUP_LIVE_FALLBACK = _env_bool("MATCHUP_LIVE_FALLBACK", True)
     MATCHUP_LADDER_SEEDS = _env_bool("MATCHUP_LADDER_SEEDS", False)
     MATCHUP_LADDER_TIERS = _ladder_tier_list()
-    MATCHUP_LADDER_MAX_PER_TIER = int(os.environ.get("MATCHUP_LADDER_MAX_PER_TIER", "50"))
+    # 0 = use all entries returned for Challenger / Grandmaster (no slice).
+    MATCHUP_LADDER_MAX_PER_TIER = _ladder_max_per_tier()
+    MATCHUP_LADDER_MASTER_MAX_PAGES = _master_max_pages()
+    MATCHUP_LADDER_MASTER_CURSOR_PATH = _master_cursor_path()
     MATCHUP_LEAGUE_QUEUE_TYPE = (
         os.environ.get("MATCHUP_LEAGUE_QUEUE_TYPE", "RANKED_SOLO_5x5").strip()
     )
+    # Only persist matches whose match_id starts with this prefix (e.g. NA1_ for NA shard).
+    MATCHUP_MATCH_ID_PREFIX = _match_id_prefix()
     COLLECTOR_SLEEP_SECONDS = float(os.environ.get("COLLECTOR_SLEEP_SECONDS", "60"))
     COLLECTOR_MATCHLIST_COUNT = int(os.environ.get("COLLECTOR_MATCHLIST_COUNT", "20"))
+    COLLECTOR_SEED_REFRESH_SECONDS = _collector_seed_refresh_seconds()
