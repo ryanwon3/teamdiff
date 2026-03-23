@@ -77,17 +77,37 @@
     }
   }
 
+  async function parseJsonResponse(res) {
+    const text = await res.text();
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return {
+        ok: false,
+        message: `Empty response (HTTP ${res.status}).`,
+      };
+    }
+    try {
+      return { ok: true, body: JSON.parse(text) };
+    } catch {
+      const clip =
+        trimmed.length > 220 ? `${trimmed.slice(0, 220)}…` : trimmed;
+      return {
+        ok: false,
+        message: `Not JSON (HTTP ${res.status}). ${clip}`,
+      };
+    }
+  }
+
   async function loadSummary() {
     const res = await fetch("/api/db/summary", {
       headers: { Accept: "application/json" },
     });
-    let body;
-    try {
-      body = await res.json();
-    } catch {
-      setStatus("error", "Invalid JSON from summary API.");
+    const parsed = await parseJsonResponse(res);
+    if (!parsed.ok) {
+      setStatus("error", parsed.message);
       return false;
     }
+    const body = parsed.body;
     if (!res.ok) {
       setStatus(
         "error",
@@ -112,15 +132,14 @@
       `/api/db/matches?limit=${pageLimit}&offset=${offset}`,
       { headers: { Accept: "application/json" } }
     );
-    let body;
-    try {
-      body = await res.json();
-    } catch {
-      setStatus("error", "Invalid JSON from matches API.");
+    const parsed = await parseJsonResponse(res);
+    if (!parsed.ok) {
+      setStatus("error", parsed.message);
       loading = false;
       loadMoreBtn.disabled = false;
       return;
     }
+    const body = parsed.body;
     if (!res.ok) {
       setStatus("error", body.error || `Error (${res.status})`);
       loading = false;

@@ -89,3 +89,13 @@ class RiotClient:
         if not isinstance(data, dict):
             return {}
         return data
+
+    def match_timeline_by_id(self, match_id: str) -> dict[str, Any]:
+        data = self._get(f"/lol/match/v5/matches/{match_id}/timeline")
+        if data is None:
+            raise RiotAPIError(0, "empty timeline response body")
+        if not isinstance(data, dict):
+            raise RiotAPIError(
+                0, f"timeline JSON was {type(data).__name__}, expected object"
+            )
+        return data

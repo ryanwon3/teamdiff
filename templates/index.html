@@ -3,61 +3,122 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>teamdiff — matchup sample</title>
+    <title>teamdiff — lane gold</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+    <script
+      src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+      crossorigin="anonymous"
+    ></script>
   </head>
   <body>
     <header class="site-header">
       <nav class="site-nav" aria-label="Main">
-        <a href="/" aria-current="page">Matchup</a>
+        <a href="/" aria-current="page">Gold lanes</a>
+        <a href="/matchup">Matchup</a>
         <a href="/database">Database</a>
       </nav>
       <h1>teamdiff</h1>
-      <p class="tagline">Prototype: champion A win rate vs champion B from sampled matches</p>
+      <p class="tagline">
+        Same-lane opponents by average early gold difference — plus gold curves per matchup
+      </p>
     </header>
 
-    <main class="container">
-      <form id="matchup-form" class="card">
+    <main class="container container-gold">
+      <form id="gold-form" class="card">
         <datalist id="champion-options"></datalist>
         <div class="champion-field">
-          <label class="champion-label" for="champ-a-input">Champion A</label>
+          <label class="champion-label" for="champion-input">Your champion</label>
           <div class="champion-row">
-            <img id="champ-a-icon" class="champion-icon-preview" alt="" width="40" height="40" hidden />
+            <img
+              id="champion-icon"
+              class="champion-icon-preview"
+              alt=""
+              width="40"
+              height="40"
+              hidden
+            />
             <input
-              id="champ-a-input"
-              name="champ_a"
+              id="champion-input"
+              name="champion"
               type="text"
               list="champion-options"
-              placeholder="e.g. Yasuo or 157"
+              placeholder="e.g. Irelia"
               autocomplete="off"
               required
             />
           </div>
         </div>
-        <div class="champion-field">
-          <label class="champion-label" for="champ-b-input">Champion B</label>
-          <div class="champion-row">
-            <img id="champ-b-icon" class="champion-icon-preview" alt="" width="40" height="40" hidden />
-            <input
-              id="champ-b-input"
-              name="champ_b"
-              type="text"
-              list="champion-options"
-              placeholder="e.g. Zed or 238"
-              autocomplete="off"
-              required
-            />
-          </div>
+        <div class="champion-field gold-min-games-field">
+          <label class="champion-label" for="min-games-input">Minimum games vs each opponent</label>
+          <input
+            id="min-games-input"
+            name="min_games"
+            type="number"
+            min="0"
+            max="50"
+            value="0"
+          />
+          <p class="subtle gold-min-games-hint">
+            <strong>0</strong> lists everyone with usable timeline data. Raise to hide one-offs.
+          </p>
         </div>
-        <button type="submit">Compute sample</button>
+        <div class="champion-field gold-sort-field">
+          <label class="champion-label" for="lead-sort-select">Sort by avg Δ gold</label>
+          <select id="lead-sort-select" name="lead_sort" aria-describedby="lead-sort-hint">
+            <option value="asc" selected>Low → high (smallest opp lead first)</option>
+            <option value="desc">High → low (largest opp lead first)</option>
+          </select>
+          <p id="lead-sort-hint" class="subtle gold-min-games-hint">
+            Δ is opponent gold minus yours at the latest sample ≤15&nbsp;min, averaged.
+          </p>
+        </div>
+        <button type="submit">Load leaderboard</button>
       </form>
 
       <p class="hint">
-        Use champion names or numeric IDs (Data Dragon). Resolution is server-side. Seeds and API key stay in <code>.env</code>.
+        Lane = Riot role (TOP / MIDDLE / BOTTOM / UTILITY / JUNGLE). Default sort is smallest
+        average gold gap first. Needs timelines from <code>collect_matches.py</code> and optional
+        <code>MATCHUP_QUEUE_ID</code> in <code>.env</code>.
       </p>
 
       <section id="status" class="status" hidden></section>
-      <section id="results" class="results card" hidden></section>
+
+      <section id="leader-meta" class="gold-meta card" hidden></section>
+
+      <section id="leaderboard-wrap" class="card gold-leaderboard-card" hidden>
+        <h2 class="section-title">Same-lane opponents</h2>
+        <p class="subtle gold-leaderboard-hint" id="gold-leaderboard-sort-blurb">
+          <strong>Avg Δ gold</strong> = their gold minus yours at latest timeline ≤15&nbsp;min,
+          averaged. Default <strong>low→high</strong>. Click a row for the curve.
+        </p>
+        <div class="table-scroll">
+          <table class="data-table gold-leaderboard-table" id="leaderboard-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Opponent</th>
+                <th id="lead-col-header">Avg Δ gold ≤15&nbsp;min ↑</th>
+                <th>Games</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="curve-panel" class="card gold-curve-card" hidden>
+        <div class="gold-curve-header">
+          <h2 class="section-title">Gold curve</h2>
+          <div class="segmented" role="group" aria-label="X-axis mode">
+            <button type="button" class="segmented-btn is-active" data-mode="time">Game time</button>
+            <button type="button" class="segmented-btn" data-mode="level">Champion level</button>
+          </div>
+        </div>
+        <p id="curve-caption" class="subtle"></p>
+        <div class="chart-wrap">
+          <canvas id="gold-chart" aria-label="Gold over time or level"></canvas>
+        </div>
+      </section>
     </main>
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>

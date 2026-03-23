@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>teamdiff — matchup</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="site-nav" aria-label="Main">
+        <a href="/">Gold lanes</a>
+        <a href="/matchup" aria-current="page">Matchup</a>
+        <a href="/database">Database</a>
+      </nav>
+      <h1>teamdiff</h1>
+      <p class="tagline">Champion A win rate vs champion B from your DB (or live seeds)</p>
+    </header>
+
+    <main class="container">
+      <form id="matchup-form" class="card">
+        <datalist id="champion-options"></datalist>
+        <div class="champion-field">
+          <label class="champion-label" for="champ-a-input">Champion A</label>
+          <div class="champion-row">
+            <img id="champ-a-icon" class="champion-icon-preview" alt="" width="40" height="40" hidden />
+            <input
+              id="champ-a-input"
+              name="champ_a"
+              type="text"
+              list="champion-options"
+              placeholder="e.g. Yasuo or 157"
+              autocomplete="off"
+              required
+            />
+          </div>
+        </div>
+        <div class="champion-field">
+          <label class="champion-label" for="champ-b-input">Champion B</label>
+          <div class="champion-row">
+            <img id="champ-b-icon" class="champion-icon-preview" alt="" width="40" height="40" hidden />
+            <input
+              id="champ-b-input"
+              name="champ_b"
+              type="text"
+              list="champion-options"
+              placeholder="e.g. Zed or 238"
+              autocomplete="off"
+              required
+            />
+          </div>
+        </div>
+        <button type="submit">Compute sample</button>
+      </form>
+
+      <p class="hint">
+        Uses <code>/api/matchup</code>. Seeds and API key stay in <code>.env</code>.
+      </p>
+
+      <section id="status" class="status" hidden></section>
+      <section id="results" class="results card" hidden></section>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/matchup.js') }}"></script>
+  </body>
+</html>

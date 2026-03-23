@@ -91,7 +91,8 @@ body {
   box-shadow: 0 8px 30px color-mix(in srgb, #000 25%, transparent);
 }
 
-#matchup-form {
+#matchup-form,
+#gold-form {
   display: grid;
   gap: 1rem;
 }
@@ -127,14 +128,16 @@ body {
   min-width: 0;
 }
 
-#matchup-form label {
+#matchup-form label,
+#gold-form .champion-label {
   display: grid;
   gap: 0.35rem;
   font-size: 0.9rem;
   color: var(--muted);
 }
 
-#matchup-form input {
+#matchup-form input,
+#gold-form input {
   padding: 0.55rem 0.65rem;
   border-radius: 6px;
   border: 1px solid color-mix(in srgb, var(--muted) 45%, transparent);
@@ -143,7 +146,8 @@ body {
   font-size: 1rem;
 }
 
-#matchup-form button {
+#matchup-form button,
+#gold-form button {
   justify-self: start;
   padding: 0.55rem 1.1rem;
   border: none;
@@ -154,7 +158,8 @@ body {
   cursor: pointer;
 }
 
-#matchup-form button:hover {
+#matchup-form button:hover,
+#gold-form button:hover {
   filter: brightness(1.08);
 }
 
@@ -424,4 +429,128 @@ body {
 .btn-secondary:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.container-gold {
+  max-width: 52rem;
+}
+
+.gold-min-games-field input[type="number"] {
+  max-width: 6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--muted) 45%, transparent);
+  background: color-mix(in srgb, var(--surface) 92%, var(--bg));
+  color: var(--text);
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.gold-sort-field select {
+  max-width: 22rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--muted) 45%, transparent);
+  background: color-mix(in srgb, var(--surface) 92%, var(--bg));
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.gold-min-games-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.gold-meta {
+  margin-top: 1rem;
+}
+
+.gold-meta-line {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.gold-meta-stats {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.gold-meta-stats li {
+  margin: 0.2rem 0;
+}
+
+.gold-leaderboard-card {
+  margin-top: 1rem;
+}
+
+.gold-leaderboard-hint {
+  margin: 0 0 0.75rem;
+}
+
+.gold-leaderboard-table .tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.lb-icon {
+  border-radius: 6px;
+  vertical-align: middle;
+}
+
+.lb-icon-cell {
+  width: 2.5rem;
+}
+
+tr.gold-leader-row {
+  cursor: pointer;
+}
+
+tr.gold-leader-row:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+tr.gold-leader-row.is-selected {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.gold-curve-card {
+  margin-top: 1rem;
+}
+
+.gold-curve-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.segmented {
+  display: inline-flex;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--muted) 40%, transparent);
+}
+
+.segmented-btn {
+  padding: 0.4rem 0.75rem;
+  border: none;
+  background: color-mix(in srgb, var(--surface) 88%, var(--bg));
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segmented-btn.is-active {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--text);
+}
+
+.chart-wrap {
+  position: relative;
+  height: min(360px, 55vh);
+  margin-top: 0.75rem;
 }

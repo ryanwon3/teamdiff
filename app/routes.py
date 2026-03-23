@@ -6,7 +6,12 @@ import sqlite3
 import requests
 from flask import Blueprint, current_app, jsonify, render_template, request
 
-from app.db.store import fetch_db_summary, fetch_matches_page
+from app.db.store import (
+    fetch_db_summary,
+    fetch_gold_curve,
+    fetch_gold_leaders_at_15,
+    fetch_matches_page,
+)
 from app.riot.client import RiotAPIError, RiotClient
 from app.services import datadragon as dd
 from app.services.matchup import compute_matchup_stats_hybrid
@@ -29,6 +34,11 @@ def _resolve_champion_query(param: str) -> tuple[int | None, str]:
 @bp.get("/")
 def index():
     return render_template("index.html")
+
+
+@bp.get("/matchup")
+def matchup_page():
+    return render_template("matchup.html")
 
 
 @bp.get("/database")
@@ -62,7 +72,9 @@ def api_db_summary():
     if summary is None:
         return jsonify({"error": "Could not read database summary"}), 500
     summary["db_path_configured"] = True
-    return jsonify(summary)
+    resp = jsonify(summary)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @bp.get("/api/db/matches")
@@ -86,7 +98,148 @@ def api_db_matches():
         return jsonify({"error": "Database file not configured or missing"}), 404
     except (OSError, sqlite3.Error) as e:
         return jsonify({"error": "Could not read matches", "detail": str(e)}), 500
-    return jsonify({"limit": limit, "offset": offset, "matches": rows})
+    resp = jsonify({"limit": limit, "offset": offset, "matches": rows})
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@bp.get("/api/gold-leaders")
+def api_gold_leaders():
+    try:
+        champ_id, raw = _resolve_champion_query("champion")
+    except (requests.RequestException, ValueError, OSError) as e:
+        return (
+            jsonify(
+                {
+                    "error": "Failed to load champion data from Data Dragon",
+                    "detail": str(e),
+                }
+            ),
+            502,
+        )
+
+    if not raw:
+        return jsonify({"error": "champion query parameter is required"}), 400
+    if champ_id is None:
+        return jsonify({"error": f"Unknown champion: {raw!r}"}), 400
+
+    try:
+        min_games = int(request.args.get("min_games", "0"))
+    except ValueError:
+        min_games = 0
+    min_games = max(0, min_games)
+
+    lead_sort = (request.args.get("lead_sort") or "asc").strip().lower()
+    if lead_sort not in ("asc", "desc"):
+        return jsonify({"error": "lead_sort must be asc or desc"}), 400
+
+    db_path = (current_app.config.get("MATCHUP_DB_PATH") or "").strip()
+    if not db_path or not os.path.isfile(db_path):
+        return jsonify({"error": "Database file not configured or missing"}), 404
+
+    queue_id = current_app.config.get("MATCHUP_QUEUE_ID")
+    payload = fetch_gold_leaders_at_15(
+        db_path,
+        champion_anchor=champ_id,
+        queue_id=queue_id,
+        min_games=min_games,
+        lead_sort=lead_sort,
+    )
+    anchor_meta = dd.champion_display(champ_id)
+    if anchor_meta:
+        payload["champion_name"] = anchor_meta["name"]
+        payload["champion_icon_url"] = anchor_meta["icon_url"]
+
+    leaders = payload.get("leaders") or []
+    for row in leaders:
+        oid = row.get("opponent_id")
+        if isinstance(oid, int):
+            om = dd.champion_display(oid)
+            if om:
+                row["opponent_name"] = om["name"]
+                row["opponent_icon_url"] = om["icon_url"]
+    payload["leaders"] = leaders
+    payload["min_games"] = min_games
+    payload["lead_sort"] = lead_sort
+    resp = jsonify(payload)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@bp.get("/api/gold-curve")
+def api_gold_curve():
+    try:
+        champ_a, raw_a = _resolve_champion_query("champion_a")
+        champ_b, raw_b = _resolve_champion_query("champion_b")
+    except (requests.RequestException, ValueError, OSError) as e:
+        return (
+            jsonify(
+                {
+                    "error": "Failed to load champion data from Data Dragon",
+                    "detail": str(e),
+                }
+            ),
+            502,
+        )
+
+    if not raw_a or not raw_b:
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "champion_a and champion_b are required (name or numeric id)"
+                    ),
+                }
+            ),
+            400,
+        )
+    if champ_a is None:
+        return jsonify({"error": f"Unknown champion for champion_a: {raw_a!r}"}), 400
+    if champ_b is None:
+        return jsonify({"error": f"Unknown champion for champion_b: {raw_b!r}"}), 400
+
+    mode = (request.args.get("mode") or "time").strip().lower()
+    if mode not in ("time", "level"):
+        return jsonify({"error": "mode must be time or level"}), 400
+
+    db_path = (current_app.config.get("MATCHUP_DB_PATH") or "").strip()
+    if not db_path or not os.path.isfile(db_path):
+        return jsonify({"error": "Database file not configured or missing"}), 404
+
+    queue_id = current_app.config.get("MATCHUP_QUEUE_ID")
+    result = fetch_gold_curve(
+        db_path,
+        champion_a=champ_a,
+        champion_b=champ_b,
+        queue_id=queue_id,
+        mode=mode,
+    )
+    if result.get("error"):
+        return jsonify(result), 400
+
+    meta_a = dd.champion_display(champ_a)
+    meta_b = dd.champion_display(champ_b)
+    result["champion_a"] = champ_a
+    result["champion_b"] = champ_b
+    if meta_a:
+        result["champion_a_name"] = meta_a["name"]
+        result["champion_a_icon_url"] = meta_a["icon_url"]
+    if meta_b:
+        result["champion_b_name"] = meta_b["name"]
+        result["champion_b_icon_url"] = meta_b["icon_url"]
+
+    for s in result.get("series") or []:
+        if not isinstance(s, dict):
+            continue
+        k = s.get("key")
+        if k == "anchor" and meta_a:
+            s["name"] = meta_a["name"]
+        elif k == "opponent" and meta_b:
+            s["name"] = meta_b["name"]
+
+    resp = jsonify(result)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @bp.get("/api/matchup")
@@ -153,20 +306,21 @@ def api_matchup():
     queue_id = current_app.config.get("MATCHUP_QUEUE_ID")
 
     plat = (current_app.config.get("RIOT_PLATFORM_ROUTE") or "").strip() or None
-    client = RiotClient(key, regional, plat) if key else None
-    seeds = resolve_matchup_seed_puuids(client)
-
-    if live_fallback and not seeds:
-        return jsonify(
-            {
-                "error": (
-                    "No seed PUUIDs for live fallback: set MATCHUP_SEED_PUUIDS or puuids.txt, "
-                    "and/or MATCHUP_LADDER_SEEDS=1 with RIOT_PLATFORM_ROUTE, then restart."
-                )
-            }
-        ), 400
 
     try:
+        client = RiotClient(key, regional, plat) if key else None
+        seeds = resolve_matchup_seed_puuids(client)
+
+        if live_fallback and not seeds:
+            return jsonify(
+                {
+                    "error": (
+                        "No seed PUUIDs for live fallback: set MATCHUP_SEED_PUUIDS or puuids.txt, "
+                        "and/or MATCHUP_LADDER_SEEDS=1 with RIOT_PLATFORM_ROUTE, then restart."
+                    )
+                }
+            ), 400
+
         result = compute_matchup_stats_hybrid(
             client,
             db_path=db_path or None,
@@ -177,6 +331,27 @@ def api_matchup():
             queue_id=queue_id,
             live_fallback=live_fallback,
         )
+
+        if result.get("error"):
+            err = result["error"]
+            if isinstance(err, str) and (
+                "RIOT_API_KEY" in err or "not configured" in err
+            ):
+                return jsonify(result), 503
+            return jsonify(result), 400
+
+        result["champion_a"] = champ_a
+        result["champion_b"] = champ_b
+        meta_a = dd.champion_display(champ_a)
+        meta_b = dd.champion_display(champ_b)
+        if meta_a:
+            result["champion_a_name"] = meta_a["name"]
+            result["champion_a_icon"] = meta_a["icon_url"]
+        if meta_b:
+            result["champion_b_name"] = meta_b["name"]
+            result["champion_b_icon"] = meta_b["icon_url"]
+
+        return jsonify(result)
     except RiotAPIError as e:
         return (
             jsonify(
@@ -188,24 +363,24 @@ def api_matchup():
             ),
             502,
         )
-
-    if result.get("error"):
-        err = result["error"]
-        if isinstance(err, str) and (
-            "RIOT_API_KEY" in err or "not configured" in err
-        ):
-            return jsonify(result), 503
-        return jsonify(result), 400
-
-    result["champion_a"] = champ_a
-    result["champion_b"] = champ_b
-    meta_a = dd.champion_display(champ_a)
-    meta_b = dd.champion_display(champ_b)
-    if meta_a:
-        result["champion_a_name"] = meta_a["name"]
-        result["champion_a_icon"] = meta_a["icon_url"]
-    if meta_b:
-        result["champion_b_name"] = meta_b["name"]
-        result["champion_b_icon"] = meta_b["icon_url"]
-
-    return jsonify(result)
+    except (requests.RequestException, ValueError, OSError) as e:
+        return (
+            jsonify(
+                {
+                    "error": "Network or data source error",
+                    "detail": str(e),
+                }
+            ),
+            502,
+        )
+    except Exception as e:
+        current_app.logger.exception("api_matchup")
+        return (
+            jsonify(
+                {
+                    "error": "Unexpected server error",
+                    "detail": str(e),
+                }
+            ),
+            500,
+        )
